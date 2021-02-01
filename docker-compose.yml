@@ -1,0 +1,104 @@
+version: '3'
+
+services:
+    web:
+        container_name: ew-nginx
+        # build:
+        #     context: ./nginx
+        #     dockerfile: Dockerfile
+        image: nginx:1.19.6-alpine
+        ports:
+            - "8080:80"
+        restart: unless-stopped
+        depends_on:
+            - redis
+        volumes:
+            - ./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf
+            - ./src/www:/public_html
+        environment:
+            REDIS_URL: redis:6379
+            DOCKER_ENV: "true"
+        networks:
+            - backend
+
+    # Redis Service
+    redis:
+        container_name: ew-redis
+        image: "redis:alpine"
+        restart: unless-stopped
+        networks:
+            - backend
+
+    # php-fpm
+    app:
+        container_name: ew-php
+        build:
+            context: ./php-fpm
+            dockerfile: Dockerfile
+        # image: php:7.3-fpm
+        depends_on:
+            - web
+        ports:
+            - "9000:9000"
+        volumes:
+            - ./src/www:/public_html
+            - ./php-fpm/php.ini:/usr/local/etc/php/php.ini
+        environment:
+            LA_ENV: local
+            DOCKER_ENV: "true"
+        networks:
+            - backend
+
+    # james
+    james:
+        container_name: ew-james
+        image: ew-james:latest
+        ports:
+            - "5000:5000"
+        volumes:
+            - ./src/james:/public_html/james
+        command:
+            - python
+            - wsgi.py
+        environment:
+            JAMES_ENV: dev
+            DOCKER_ENV: "true"
+        networks:
+            - backend
+
+    # james-io
+    james-io:
+        container_name: ew-james-io
+        image: ew-james:latest
+        ports:
+            - "5001:5001"
+        volumes:
+            - ./src/james:/public_html/james
+        command:
+            - python
+            - wsgi-io.py
+        environment:
+            JAMES_ENV: dev
+            DOCKER_ENV: "true"
+        networks:
+            - backend
+
+    # celery
+    celery:
+        container_name: ew-celery
+        image: ew-james:latest
+        volumes:
+            - ./src/james:/public_html/james
+        command:
+            - celery
+            - worker
+            - -A
+            - app.tasks.worker:worker
+        environment:
+            JAMES_ENV: dev
+            DOCKER_ENV: "true"
+        networks:
+            - backend
+
+networks:
+    backend:
